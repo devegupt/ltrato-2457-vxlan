@@ -1,0 +1,124 @@
+---
+image: danischm/nac@sha256:fec81ec4a34cd2e400124aa43f54f00dc3056783ad50d4d5018483d568299404
+stages:
+  - setup
+  - validate
+  - deploy
+  - test
+
+variables:
+  GIT_SSL_NO_VERIFY: "true"
+  ND_HOST:
+    description: "Cisco ND HOST"
+  ND_DOMAIN:
+    description: "Cisco ND Domain"
+  ND_USERNAME:
+    description: "Cisco ND Username"
+  ND_PASSWORD:
+    description: "Cisco ND Password"
+  NDFC_SW_USERNAME:
+    description: "Cisco NDFC Switch Username"
+  NDFC_SW_PASSWORD:
+    description: "Cisco NDFC Switch Password"
+
+cache:
+  paths:
+    - .pip_cache/
+
+setup:
+  stage: setup
+  retry: 2
+  script:
+    - echo "Setting up environment..."
+    - pip install --cache-dir .pip_cache -r requirements.txt --force-reinstall
+    - ansible-galaxy collection install -U -f -p ./collections/ansible_collections/ -r requirements.yaml
+  artifacts:
+    paths:
+      - collections/ansible_collections/
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "main"
+
+validate:
+  stage: validate
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
+      - unknown_failure
+      - scheduler_failure
+  script:
+    - set -o pipefail && nac-validate ./host_vars/nac-fabric1 -s ./schema.yaml -r ./collections/ansible_collections/cisco/nac_dc_vxlan/roles/validate/files/rules/ --non-strict |& tee validate_output.txt
+  artifacts:
+    paths:
+      - validate_output.txt
+      - collections/ansible_collections/
+  cache: []
+  needs:
+    - setup
+  dependencies:
+    - setup
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "main"
+
+deploy:
+  stage: deploy
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
+      - unknown_failure
+      - scheduler_failure
+  script:
+    - pip install --cache-dir .pip_cache -r requirements.txt --force-reinstall
+    - set -o pipefail && ansible-playbook -i inventory.yaml vxlan.yaml |& tee deploy_output.txt
+  artifacts:
+    when: always
+    paths:
+      - deploy_output.txt
+  cache: []
+  needs:
+    - validate
+    - setup
+  dependencies:
+    - validate
+    - setup
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "main"
+
+test-integration:
+  stage: test
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
+      - unknown_failure
+      - scheduler_failure
+  script:
+    - set -o pipefail && nac-test -d ./host_vars/nac-fabric1/ -d ./defaults.yaml -t ./tests/templates/ -o ./tests/results/ndfc |& tee test_output.txt
+  artifacts:
+    when: always
+    paths:
+      - tests/results/ndfc/*.html
+      - tests/results/ndfc/xunit.xml
+      - test_output.txt
+    reports:
+      junit: tests/results/ndfc/xunit.xml
+  cache: []
+  dependencies:
+    - setup
+    - deploy
+  needs:
+    - setup
+    - deploy
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_PIPELINE_SOURCE != "schedule" && $CI_COMMIT_BRANCH == "main"

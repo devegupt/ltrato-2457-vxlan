@@ -1,0 +1,20 @@
+---
+ansible_connection: ansible.netcommon.httpapi
+ansible_network_os: cisco.dcnm.dcnm
+ansible_httpapi_port: 443
+ansible_httpapi_use_ssl: true
+ansible_httpapi_validate_certs: false
+ansible_httpapi_login_domain: "{{ lookup('env', 'ND_DOMAIN') }}"
+ansible_httpapi_timeout: "{{ 300 if lookup('env', 'CI') else 60 }}"
+# cisco.nac_dc_vxlan >=0.8.0's DTC "Pythonic Consolidation" create pipeline (CREATE [fabric] Step N/M: ...)
+# does not pick up ansible.cfg's [persistent_connection] command_timeout for its internal API calls -- the
+# ansible.netcommon.httpapi connection default of 30s applies instead, which is too short for steps like
+# device inventory/discovery. Set it explicitly as a variable (the documented, higher-precedence source) so
+# the whole create pipeline, not just this one step, has enough headroom. Kept well above the 30s floor that
+# caused a real failure, but capped well below ansible.cfg's own old 7200s ceiling -- this lab's entire
+# session is only 1h45m, so a single stuck call should not be able to eat the majority of it.
+ansible_command_timeout: 600
+ansible_user: "{{ lookup('env', 'ND_USERNAME') }}"
+ansible_password: "{{ lookup('env', 'ND_PASSWORD') }}"
+ndfc_switch_username: "{{ lookup('env', 'NDFC_SW_USERNAME') }}"
+ndfc_switch_password: "{{ lookup('env', 'NDFC_SW_PASSWORD') }}"

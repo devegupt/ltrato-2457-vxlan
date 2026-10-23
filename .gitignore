@@ -1,0 +1,6 @@
+collections/
+.pip_cache/
+tests/results/
+*.log
+.env
+.ansible/
